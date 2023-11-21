@@ -10,7 +10,7 @@ library(readODS)
 library(tidyverse)
 library(collapse)
 library(tidyfast)
-tmat <- read_ods("output/output_17_11_23/trans_mat/trans_mat_gen1_0204_high.ods")
+tmat <- read_ods("output/trans_prob/trans_mat_gen1_0204_high.ods")
 
 init <- c(P=.86,U=.1,W = .04)
 
