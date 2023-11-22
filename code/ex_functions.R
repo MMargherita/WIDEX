@@ -1,34 +1,9 @@
-
-# 1: partnered    P
-# 2: unpartnered  U
-# 3: widowed      W
-# 4: dead         D
-
-
 # Note: UW and WU should be structural 0s
-library(readODS)
+
 library(tidyverse)
 library(collapse)
 library(tidyfast)
-tmat <- read_ods("output/output_17_11_23/trans_mat/trans_mat_gen1_0204_high.ods")
 
-init <- c(P=.86,U=.1,W = .04)
-
-p_tibble <-
-  tmat |> 
-  rename(age = rownames) |> 
-  # TR: double check this age filter, might need one age higher?
-  filter(between(age, 65, 111)) |> 
-  pivot_longer(X_p11:X_p34, names_to = "transition", values_to = "p") |> 
-  mutate(p = ifelse(is.na(p),0,p),
-         transition = gsub("X_p","", transition),
-         transition = gsub("1","P", transition),
-         transition = gsub("2","U", transition),
-         transition = gsub("3","W", transition),
-         transition = gsub("4","D", transition),
-         from = substr(transition,1,1),
-         to = substr(transition,2,2)) |> 
-  select(-transition) 
 
 # rather flexible, defaults refer to use inside nested data.frame,
 # but it can also return a matrix proper if matrix == TRUE
@@ -117,7 +92,7 @@ transient_matrix <- function(p_tibble, transient_states = c("P","U","W")){
     # arrange blocks into U configuration
     pivot_wider(names_from = from, values_from = data) |> 
     # stacks blocks in column
-    unnest(cols = all_of(states),names_sep="::") |> 
+    unnest(cols = all_of(transient_states),names_sep="::") |> 
     ungroup() |> 
     # everything else is hackishness to get destination::age in rownames
     select(-to) |> 
@@ -127,7 +102,117 @@ transient_matrix <- function(p_tibble, transient_states = c("P","U","W")){
     as.matrix()
 }
 
-transient_block(p_tibble)
-transient_matrix(p_tibble)
+# transient_block(p_tibble, matrix = TRUE)
+# 
+# p_tibble |> 
+#   filter(from == "P",
+#          to == "W") |> 
+# transient_block(matrix = FALSE)
 
 
+p_tibble_to_attrition_vec <- function(p_tibble){
+    p_tibble  %>% 
+      fsubset(from != to)  %>% 
+      fmutate(rowname = paste(from,to,age,sep="_"))  %>% 
+      fselect(rowname,p) %>% 
+      deframe() 
+}
+
+attrition_vec_to_p_tibble <- function(attrition_vec){
+  attrition_vec |> 
+    enframe(value = "p") |> 
+    separate_wider_delim(name, delim = "_", names = c("from","to","age")) |> 
+    dt_pivot_wider(names_from = to, values_from = p) |> 
+    dt_pivot_longer(D:W, names_to = "to", values_to = "p") |> 
+    group_by(from, age) |> 
+    fmutate(p = ifelse(is.na(p), 1 - sum(p, na.rm = TRUE), p),
+            age = as.integer(age)) |> 
+    arrange(age,from)
+}
+
+# all.equal(
+# transient_matrix(p_tibble),
+# 
+# p_tibble_to_attrition_vec(p_tibble) |> 
+#   attrition_vec_to_p_tibble() |> 
+#   transient_matrix(),
+# tolerance = 1e-7)
+
+transient_to_fundamental <- function(transient_matrix){
+  I <- diag(nrow = nrow(transient_matrix))
+  # TR: maybe remove dudel discount and instead 
+  # interp over lxs
+  N <- solve(I - transient_matrix) - (I / 2)
+  N
+}
+
+
+fundamental_to_ex <- function(fundamental_matrix, 
+                              x = 65, 
+                              init = c(P = .91, U = .08, W = .01),
+                              state = "all"){
+  init <- enframe(init, name = "from", value = "pi")
+  
+  exs <- 
+    fundamental_matrix |> 
+    as.data.frame() |> 
+    rownames_to_column("to") |> 
+    dt_pivot_longer(-to, names_to = "from", values_to = "lxs") |> 
+    separate_wider_delim(to,names = c("to","age_to"),delim = "::") |> 
+    separate_wider_delim(from,names = c("from","age"),delim = "::") |> 
+    fmutate(age = as.integer(age),
+            age_to = as.integer(age_to))  |> 
+    fsubset(age_to >= age) |> 
+    fsubset(age == x) |> 
+    fgroup_by(from, to) |> 
+    fsummarise(exs = sum(lxs)) |> 
+    left_join(init, by = join_by(from)) |> 
+    fgroup_by(to) |> 
+    fsummarise(exs = sum(exs * pi))
+  
+  if (state == "all"){
+    return(exs)
+  }
+  
+  exs |> 
+  fsubset(to == state)
+  
+}
+
+attrition_vec_to_ex <- function(attrition_vec, state = "all"){
+  init_ind      <- nchar(names(attrition_vec)) == 1
+  init          <- attrition_vec[init_ind]
+  attrition_vec <- attrition_vec[!init_ind]
+  
+  attrition_vec |> 
+    attrition_vec_to_p_tibble() |> 
+    transient_matrix() |> 
+    transient_to_fundamental() |> 
+    fundamental_to_ex(init = init, state = state) |> 
+    deframe()
+}
+
+horiuchi <- function (func, pars1, pars2, N, ...) 
+{
+  d <- pars2 - pars1
+  n <- length(pars1)
+  delta <- d/N
+  grad  <- matrix(rep(0.5:(N - 0.5)/N, n), byrow = TRUE, ncol = N,
+                  dimnames = list(names(pars1), 1:N))
+  x     <- pars1 + d * grad
+  
+  cc    <- matrix(0, nrow = n, ncol = N,
+                  dimnames = list(names(pars1), 1:N))
+  DD <- diag(delta / 2)
+  rownames(DD) <- names(pars1)
+  for (j in 1:N) {
+    
+    for (i in 1:n) {
+      cc[i, j] <- func((x[, j] + DD[, i]), ...) - 
+                  func((x[, j] - DD[, i]), ...)
+    }
+  }
+  out <- rowSums(cc)
+  names(out) <- names(pars1)
+  out
+}
