@@ -4,4 +4,7 @@
 .httr-oauth
 .DS_Store
 .quarto
-new_state_space.png
+*.png
+*.zip
+*.xlsx
+*.docx
