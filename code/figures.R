@@ -5,6 +5,7 @@ library(data.table)
 library(ggplot2)
 library(HMDHFDplus)
 library(readxl)
+library(readODS)
 
 # check lifexp at age 65 in finland 
 # 88, 01, 18
@@ -217,3 +218,55 @@ mean_age %>%
 
 ggsave(file="output/lifetimerisk.png",
        width=7, height = 3)
+
+
+
+
+
+
+
+
+# TRANS PROBABILITIES -----
+# death probabilities
+trans_prob_d <- read_ods("output/trans_prob/trans_mat_gen1_1719_low.ods")
+names(trans_prob_d) <- c("age",
+                         "p11","p12","p13","p14",
+                         "p21","p22","p23","p24",
+                         "p31","p32","p33","p34")
+
+trans_prob_d %>% select(age,p14,p24,p34) %>% 
+  pivot_longer(names_to = "type",
+               values_to = "trans",
+               cols = c("p14","p24","p34")) %>% 
+  ggplot(aes(x=age,y=trans,color=type))+
+  geom_line()
+
+
+
+
+#compare men and women
+trans_prob_M <- read_ods("output/trans_prob/trans_mat_gen1_1719_high.ods")
+names(trans_prob_M) <- c("age",
+                         "p11","p12","p13","p14",
+                         "p21","p22","p23","p24",
+                         "p31","p32","p33","p34")
+trans_prob_M <- trans_prob_M %>% 
+  mutate(sex="M")
+
+trans_prob_F <- read_ods("output/trans_prob/trans_mat_gen2_1719_high.ods")
+names(trans_prob_F) <- c("age",
+                         "p11","p12","p13","p14",
+                         "p21","p22","p23","p24",
+                         "p31","p32","p33","p34")
+trans_prob_F <- trans_prob_F %>% 
+  mutate(sex="F")
+
+
+trans_prob <- rbind(trans_prob_F,trans_prob_M)
+
+trans_prob %>% select(age,p13, sex) %>% 
+  ggplot(aes(x=age,y=p13,color=sex))+
+  geom_line()+
+  ylim(0,0.2)
+
+

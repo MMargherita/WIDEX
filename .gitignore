@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto
+*.png
+*.zip
+*.xlsx
+*.docx
+output/output_17_11_23
+reference
+text
