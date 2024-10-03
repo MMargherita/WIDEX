@@ -8,16 +8,20 @@ library(haven)
 
 
 smooth_prev <- function(data, knots = c(-15,-10,-5,seq(-3,5,by=2),10,15)){
-  .age_diffs <- data$age_diff
+  
+  # TR: note to Marherita: this vector should be hard-coded
+  .age_diffs <-  tibble(age_diff = -50:50)
+
+  
   data %>%
     glm(sqrt(prev) ~ ns(age_diff,
                         knots = knots),
         family = binomial(link = "logit"), data = .) %>% 
-    predict(newdata = tibble(age_diff = data$age_diff),
+    predict(newdata =  .age_diffs,
             type = "response") %>% 
     as.data.frame() %>% 
     rename(prev_hat = 1) %>% 
-    mutate(age_diff = data$age_diff,
+    mutate(age_diff =  .age_diffs$age_diff,
            prev_hat = prev_hat^2,
            prev_hat = prev_hat/sum(prev_hat)) %>% 
     left_join(data, by = join_by(age_diff))
@@ -61,7 +65,7 @@ prev_8789_gen1 <- data_8719_gen1 %>%
 
 
 pred_prev_8789_gen1 <- prev_8789_gen1 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_8789_gen1 %>% 
@@ -109,7 +113,7 @@ prev_0204_gen1 <- data_8719_gen1 %>%
 
 
 pred_prev_0204_gen1 <- prev_0204_gen1 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_0204_gen1 %>% 
@@ -159,7 +163,7 @@ prev_1719_gen1 <- data_8719_gen1 %>%
 
 
 pred_prev_1719_gen1 <- prev_1719_gen1 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_1719_gen1 %>% 
@@ -227,7 +231,7 @@ prev_8789_gen2 <- data_8719_gen2 %>%
 
 
 pred_prev_8789_gen2 <- prev_8789_gen2 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_8789_gen2 %>% 
@@ -275,7 +279,7 @@ prev_0204_gen2 <- data_8719_gen2 %>%
 
 
 pred_prev_0204_gen2 <- prev_0204_gen2 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_0204_gen2 %>% 
@@ -325,7 +329,7 @@ prev_1719_gen2 <- data_8719_gen2 %>%
 
 
 pred_prev_1719_gen2 <- prev_1719_gen2 %>% 
-  group_modify(~smooth_prev(data = .), .by = ed_shsp) %>% 
+  group_modify(~smooth_prev(data = .), .by = edu_shsp) %>% 
   select(age_diff,edu_shsp,prev_hat)
 
 # pred_prev_1719_gen2 %>% 
