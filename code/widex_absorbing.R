@@ -25,7 +25,6 @@ widex_pars_to_p_tibble <- function(PW, PU, PD, WD, age, age_diff=0, age_pw=c(20:
   p_tibble
 }
 
-
 widex_pars_to_ex <- function(PW, PU, PD, WD, age, age_ego=65, age_pw=c(20:110),prev){
   
   expect <- tibble(age_pw, prev)%>% 
@@ -38,6 +37,11 @@ widex_pars_to_ex <- function(PW, PU, PD, WD, age, age_ego=65, age_pw=c(20:110),p
   
   for (i in 1:length(age_pw)) {
    
+    # TR: Note that PW is the same in each iteration here, but not all elements
+    # are used each time, because a selection happens based on age_diff.
+    # which means that; we should pre-make a tibble
+    # or vec of all possible partner mortality schedules. ie. 300 elements
+    # long and be able to pick them 
      ex_W <- widex_pars_to_p_tibble(PW, PU, PD, WD, age = age,age_diff=age_diff[i],
                                     age_pw=age_pw) %>% 
        transient_matrix %>% 
