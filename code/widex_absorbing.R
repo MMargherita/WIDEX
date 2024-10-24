@@ -1,5 +1,8 @@
 # TODO: current the prev estimates are all identical for different education combinations
-
+# we fixed the prev smoothing code to rerun on fiona 
+# also in the following, the partner mortality is far too low, so we need to check
+# how it was generated. Spot-checking against like-sex own-mortality we see 
+# too-large differences
 
 # we are going to use some functions from "ex_functions.R"
 source("code/ex_functions.R")
@@ -22,7 +25,6 @@ widex_pars_to_p_tibble <- function(PW, PU, PD, WD, age, age_diff=0, age_pw=c(20:
   p_tibble
 }
 
-
 widex_pars_to_ex <- function(PW, PU, PD, WD, age, age_ego=65, age_pw=c(20:110),prev){
   
   expect <- tibble(age_pw, prev)%>% 
@@ -35,6 +37,11 @@ widex_pars_to_ex <- function(PW, PU, PD, WD, age, age_ego=65, age_pw=c(20:110),p
   
   for (i in 1:length(age_pw)) {
    
+    # TR: Note that PW is the same in each iteration here, but not all elements
+    # are used each time, because a selection happens based on age_diff.
+    # which means that; we should pre-make a tibble
+    # or vec of all possible partner mortality schedules. ie. 300 elements
+    # long and be able to pick them 
      ex_W <- widex_pars_to_p_tibble(PW, PU, PD, WD, age = age,age_diff=age_diff[i],
                                     age_pw=age_pw) %>% 
        transient_matrix %>% 
@@ -92,12 +99,17 @@ widex_vec_to_ex <- function(widex_vec){
 }
 
 
-p_tibble <- read_csv("output/trans_mat_res/tmat_gen2_0204_high.ods") |> 
+p_tibble <- read_csv("output/trans_mat_res/tmat_gen2_0204_low.ods") |> 
   filter(age < 112)
 
 p_partner <- read_csv("output/output_13_12_2023/pr_d_20plus/pr_d_20plus_0204_gen1_low.txt") |> 
   select(age_pw = ika, 
          PW = 3)
+# p_partner_check <- read_csv("output/trans_mat_res/tmat_gen1_0204_low.ods") |> 
+#   filter(age < 112) |> 
+#   select(age_pw=age, PD)
+# left_join(p_partner, p_partner_check, by = join_by(age_pw)) |> View()
+
 
 age_diffs <- -50:50
 prev <-
@@ -106,7 +118,7 @@ prev <-
   complete(age_diff = age_diffs, 
            edu_shsp, 
            fill = list(prev_hat = 0)) |> 
-  filter(edu_shsp == "high_low") |>
+  filter(edu_shsp == "low_low") |>
   rename(prev = prev_hat) |> 
   mutate(age_pw = 65 + age_diff)
 
@@ -143,3 +155,14 @@ widex_pars_to_ex(PW = p_partner$PW,
                    age_pw = p_partner$age_pw,
                    prev = previ) |> widex_vec_to_ex()
 }
+
+read_csv("output/output_13_12_2023/prev_age_diff/pred_prev_0204_gen2.txt") |> 
+  distinct() |> 
+  complete(age_diff = age_diffs, 
+           edu_shsp, 
+           fill = list(prev_hat = 0)) |> 
+  group_by(edu_shsp) |> 
+  mutate(prev = prev_hat/sum(prev_hat)) |> 
+  ggplot(aes(x = age_diff, y = prev, color = edu_shsp)) +
+  geom_line() +
+  scale_y_log10()
