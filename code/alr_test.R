@@ -2,20 +2,6 @@
 library(tidyverse)
 library(compositions)
 
-prob <- read_csv("probs_2.csv")
-
-wide <-
-  prob |> 
-    mutate(
-      count_from_to = if_else(is.na(count_from_to),3,count_from_to),
-      probability = count_from_to / count_from) |> 
-  select(-1,-from_to,-count_from_to,-educ,-gender,-year) |> 
-  mutate(from_to = paste0(substr(from,1,1) |> toupper(),
-                          substr(to,1,1) |> toupper())) |> 
-  select(-to) |> 
-  pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
-
-
 var_alr <- function(n, p1, p2, smooth = TRUE) {
   # This function was designed with many iterations
   # of chatgpt, and may still have problems. I was unable
@@ -83,12 +69,20 @@ var_alr <- function(n, p1, p2, smooth = TRUE) {
   return(variances)
 }
 
-fit_alr <- function(wide){
+fit_alr <- function(long_chunk){
+  wide <- long_chunk |> 
+    pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
+  
   x    <- wide$age
-  from <- wide$from[1] |> substr(1,1) |> toupper()
+  cn <- colnames(wide)
+  from_to <- cn[nchar(cn)==2]
+  # identify the self-transition to use in denominator
+  denom_var <- from_to[substr(from_to,1,1) == substr(from_to,2,2)]
+  attr_vars <- from_to[from_to != denom_var]
+  
   X <- 
     wide |> 
-    select(starts_with(from)) |> 
+    select(all_of(from_to)) |> 
     as.matrix()
   A <- 
     X |> 
@@ -96,8 +90,7 @@ fit_alr <- function(wide){
     unclass()
   n <- wide$count_from
   
-  denom_var <- paste0(from,from)
-  attr_vars <- colnames(X)[colnames(X) != denom_var]
+
   V <- A * 0
   for (i in 1:length(attr_vars)){
     V[,i] <- var_alr(n, X[,attr_vars[i]],X[,denom_var],smooth=TRUE)
@@ -112,14 +105,26 @@ fit_alr <- function(wide){
     Y |> 
     alrInv() |> 
     unclass() |> 
-    as.data.frame() 
-    
-    wide |> 
-      select(type,age,from,count_from) |> 
-      bind_cols(pred) |> 
-      mutate(type = "alr spline")
+    as.data.frame() |> 
+    mutate(age = x, 
+           count_from = n, .before = 1) |> 
+    pivot_longer(-(1:2), 
+                 names_to = "from_to", values_to = "probability") 
+      
+  return(pred)
 }
+#alr_smoothed_probabilities <-
+probs<-  read_csv("probs_2.csv", show_col_types = FALSE) |> 
+  select(-1)
 
-
-
+probs |> 
+  mutate(
+    count_from_to = if_else(is.na(count_from_to),3,count_from_to),
+    probability = count_from_to / count_from) |> 
+  select(-1,-from_to,-count_from_to) |> 
+  mutate(from_to = paste0(substr(from,1,1) |> toupper(),
+                          substr(to,1,1) |> toupper())) |> 
+  select(-to) |> 
+  group_by(educ, gender, year, from) |> 
+  group_modify(~fit_alr(long_chunk = .x))
 
