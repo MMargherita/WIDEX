@@ -109,7 +109,8 @@ fit_alr <- function(long_chunk){
     mutate(age = x, 
            count_from = n, .before = 1) |> 
     pivot_longer(-(1:2), 
-                 names_to = "from_to", values_to = "probability") 
+                 names_to = "from_to", values_to = "probability") |> 
+    mutate(type = "alr smoothed")
       
   return(pred)
 }
@@ -117,6 +118,7 @@ fit_alr <- function(long_chunk){
 probs<-  read_csv("probs_2.csv", show_col_types = FALSE) |> 
   select(-1)
 
+alr_pred <-
 probs |> 
   mutate(
     count_from_to = if_else(is.na(count_from_to),3,count_from_to),
@@ -126,5 +128,18 @@ probs |>
                           substr(to,1,1) |> toupper())) |> 
   select(-to) |> 
   group_by(educ, gender, year, from) |> 
-  group_modify(~fit_alr(long_chunk = .x))
+  group_modify(~fit_alr(long_chunk = .x)) 
 
+# compare
+probs |>  
+  mutate(
+    count_from_to = if_else(is.na(count_from_to),3,count_from_to),
+    probability = count_from_to / count_from, 
+    from_to = paste0(substr(from,1,1) |> toupper(),
+                          substr(to,1,1) |> toupper())) |> 
+  select(-count_from_to) |> 
+  bind_rows(alr_pred) |> 
+  ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
+  geom_line() +
+  #scale_y_log10() +
+  theme_minimal()
