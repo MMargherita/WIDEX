@@ -2,57 +2,49 @@
 library(tidyverse)
 library(compositions)
 
-var_alr <- function(n, p1, p2, smooth = TRUE) {
-  # This function was designed with many iterations
-  # of chatgpt, and may still have problems. I was unable
-  # to find a direct variance expression for an ALR value,
-  # so this is my best approximation for the time being. The intent
-  # is to use the inverse of the smoothed output as a regression weight
-  # for smoothing ALR age patterns.
-  N <- length(n)
+lbinom_var <- function(n, p) {
+  x <- 1:n  # Generate the range of possible successes (skip x = 0)
+  
+  # Compute log-PMF for stability, then exponentiate
+  probs <- dbinom(x, size = n, prob = p, log = TRUE) |> exp()
+  
+  # Compute moments in a vectorized way
+  log_x <- log(x)
+  E_log_X <- sum(log_x * probs)
+  E_log_X2 <- sum((log_x^2) * probs)
+  
+  # Return variance
+  E_log_X2 - E_log_X^2
+}
+
+var_alr <- function(
+    n, 
+    p1, 
+    p2, 
+    #cov_matrix = NULL, 
+    #minimum_variance = 1e-6,
+    epsilon = 1e-10, # Small offset to avoid numerical issues
+    smooth = TRUE){
+ 
+   N <- length(n)
   stopifnot(all.equal(N, length(p1),length(p2)))
-  # Small offset to avoid numerical issues
-  epsilon <- 1e-10
-  minimum_variance <- 1e-3  # Floor for variances
-  
+
   cov_matrix <- cov(cbind(log(p1),log(p2)))
-  
-  # Stabilize probabilities
+  #   
+  #   # Stabilize probabilities
   p1 <- p1 + epsilon
   p2 <- p2 + epsilon
   
-  # Function to compute the binomial PMF using log scale for stability
-  binomial_pmf <- function(x, n, p) {
-    exp(lchoose(n, x) + x * log(p) + (n - x) * log(1 - p))
-  }
-  
-  # Function to compute E[log(X)] and E[log(X)^2]
-  log_moments <- function(n, p) {
-    E_log_X <- 0
-    E_log_X2 <- 0
-    
-    for (x in 1:n) {  # Skip x=0 since log(0) is undefined
-      prob <- binomial_pmf(x, n, p)
-      log_x <- log(x)
-      E_log_X <- E_log_X + log_x * prob
-      E_log_X2 <- E_log_X2 + (log_x^2) * prob
-    }
-    
-    list(E_log_X = E_log_X, E_log_X2 = E_log_X2)
-  }
-  
   # Initialize variances vector
-  variances <- numeric(N)
+  variances <- numeric(length(n))
   
   # Loop over all inputs (works for both scalar and vector cases)
   for (i in seq_along(n)) {
     # Compute variance for each age or observation
-    moments_X1 <- log_moments(n[i], p1[i])
-    var_log_X1 <- max(minimum_variance, moments_X1$E_log_X2 - (moments_X1$E_log_X^2))
-    
-    moments_X2 <- log_moments(n[i], p2[i])
-    var_log_X2 <- max(minimum_variance, moments_X2$E_log_X2 - (moments_X2$E_log_X^2))
-    
+    # var_log_X1 <- max(minimum_variance, lbinom_var(n[i], p1[i]))
+    # var_log_X2 <- max(minimum_variance, lbinom_var(n[i], p2[i]))
+    var_log_X1 <- lbinom_var(n[i], p1[i])
+    var_log_X2 <- lbinom_var(n[i], p2[i])
     if (!is.null(cov_matrix)) {
       cov_log_X1_X2 <- cov_matrix[1, 2]  # Extract covariance from provided matrix
       cov_log_X1_X2 <- min(cov_log_X1_X2, sqrt(var_log_X1 * var_log_X2))  # Cap covariance
@@ -60,9 +52,10 @@ var_alr <- function(n, p1, p2, smooth = TRUE) {
       cov_log_X1_X2 <- 0  # Default fallback if no covariance provided
     }
     
-    variances[i] <- max(minimum_variance, var_log_X1 + var_log_X2 - 2 * cov_log_X1_X2)
-  }
-  
+    # variances[i] <- max(minimum_variance, var_log_X1 + var_log_X2 - 2 * cov_log_X1_X2)
+    variances[i] <- var_log_X1 + var_log_X2 - 2 * cov_log_X1_X2
+    
+    }
   if (smooth){
     variances <- smooth.spline(variances)$y
   }
@@ -87,13 +80,13 @@ fit_alr <- function(long_chunk){
   A <- 
     X |> 
     alr() |> 
-    unclass()
+    unclass() 
   n <- wide$count_from
   
 
-  V <- A * 0
+  V <- matrix(0,nrow = nrow(A),ncol=ncol(A), dimnames=list(NULL, colnames(A)))
   for (i in 1:length(attr_vars)){
-    V[,i] <- var_alr(n, X[,attr_vars[i]],X[,denom_var],smooth=TRUE)
+    V[,i] <- var_alr(n, p1 = X[,attr_vars[i]], p2 = X[,denom_var],smooth=TRUE)
   }
 
   Y <- A * 0
@@ -130,6 +123,7 @@ probs |>
   group_by(educ, gender, year, from) |> 
   group_modify(~fit_alr(long_chunk = .x)) 
 
+
 # compare
 probs |>  
   mutate(
@@ -141,5 +135,7 @@ probs |>
   bind_rows(alr_pred) |> 
   ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
   geom_line() +
-  #scale_y_log10() +
+  scale_y_log10() +
   theme_minimal()
+
+
