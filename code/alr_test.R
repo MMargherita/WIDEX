@@ -17,51 +17,34 @@ lbinom_var <- function(n, p) {
   E_log_X2 - E_log_X^2
 }
 
-var_alr <- function(
-    n, 
-    p1, 
-    p2, 
-    #cov_matrix = NULL, 
-    #minimum_variance = 1e-6,
-    epsilon = 1e-10, # Small offset to avoid numerical issues
-    smooth = TRUE){
- 
-   N <- length(n)
-  stopifnot(all.equal(N, length(p1),length(p2)))
-
-  cov_matrix <- cov(cbind(log(p1),log(p2)))
-  #   
-  #   # Stabilize probabilities
-  p1 <- p1 + epsilon
-  p2 <- p2 + epsilon
+var_alr <- function(n, p1_name, p2_name, X, smooth = TRUE, epsilon = 1e-6) {
   
-  # Initialize variances vector
-  variances <- numeric(length(n))
+  N <- length(n)
+  stopifnot(all.equal(N, nrow(X)))
+  stopifnot(p1_name %in% colnames(X))
+  stopifnot(p2_name %in% colnames(X))
   
-  # Loop over all inputs (works for both scalar and vector cases)
+  # make sure no 0s
+  X <- X + epsilon
+  
+  vx <- n * 0
+  
   for (i in seq_along(n)) {
-    # Compute variance for each age or observation
-    # var_log_X1 <- max(minimum_variance, lbinom_var(n[i], p1[i]))
-    # var_log_X2 <- max(minimum_variance, lbinom_var(n[i], p2[i]))
-    var_log_X1 <- lbinom_var(n[i], p1[i])
-    var_log_X2 <- lbinom_var(n[i], p2[i])
-    if (!is.null(cov_matrix)) {
-      cov_log_X1_X2 <- cov_matrix[1, 2]  # Extract covariance from provided matrix
-      cov_log_X1_X2 <- min(cov_log_X1_X2, sqrt(var_log_X1 * var_log_X2))  # Cap covariance
-    } else {
-      cov_log_X1_X2 <- 0  # Default fallback if no covariance provided
-    }
+    var_log_p1 <- lbinom_var(n[i], X[i, p1_name])
+    var_log_p2 <- lbinom_var(n[i], X[i, p2_name])
     
-    # variances[i] <- max(minimum_variance, var_log_X1 + var_log_X2 - 2 * cov_log_X1_X2)
-    variances[i] <- var_log_X1 + var_log_X2 - 2 * cov_log_X1_X2
-    
-    }
-  if (smooth){
-    variances <- smooth.spline(variances)$y
+    # Compute ALR variance                    
+    vx[i] <- var_log_p1 + var_log_p2 + 
+      2 / n[i] # this is cov term for multinom
   }
-  return(variances)
+  
+  # Smoothing option
+  if (smooth) {
+    vx <- smooth.spline(vx, w = n)$y
+  }
+  
+  return(vx)
 }
-
 fit_alr <- function(long_chunk){
   wide <- long_chunk |> 
     pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
@@ -86,7 +69,11 @@ fit_alr <- function(long_chunk){
 
   V <- matrix(0,nrow = nrow(A),ncol=ncol(A), dimnames=list(NULL, colnames(A)))
   for (i in 1:length(attr_vars)){
-    V[,i] <- var_alr(n, p1 = X[,attr_vars[i]], p2 = X[,denom_var],smooth=TRUE)
+    V[,i] <- var_alr(n, 
+                     p1_name = attr_vars[i],
+                     p2_name = denom_var,
+                     X = X,
+                     smooth=TRUE)
   }
 
   Y <- A * 0
@@ -137,5 +124,9 @@ probs |>
   geom_line() +
   scale_y_log10() +
   theme_minimal()
+
+
+
+
 
 
