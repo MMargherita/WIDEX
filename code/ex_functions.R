@@ -151,7 +151,8 @@ fundamental_to_ex <- function(fundamental_matrix,
                               x = 65, 
                               init = c(P = .91, U = .08, W = .01),
                               state = "all"){
-  init <- enframe(init, name = "from", value = "pi")
+  init <- enframe(init, name = "from", value = "pi") %>% 
+    mutate(from = substr(from,1,1))
   
   exs <- 
     fundamental_matrix |> 
