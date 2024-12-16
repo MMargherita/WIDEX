@@ -23,6 +23,9 @@ lbinom_var <- function(n, p) {
 # but this does not convince me. Instead we calculate cov over
 # small moving windows of age ranges. But the result is super 
 # sensitive to window size. Larger window = larger negative cov,
+# it's a sort of conundrum. We make the determination of window
+# size a function of sd within a predefined range of possible windows.
+# probably overthought, but it works reasonably well it seems.
 adaptive_window <- function(i, X, min_window = 3, max_window = 10) {
   # Calculate local variability across rows
   local_sd <- apply(X[max(1, i - max_window):min(nrow(X), i + max_window), ], 2, sd)
