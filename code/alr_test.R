@@ -17,34 +17,75 @@ lbinom_var <- function(n, p) {
   E_log_X2 - E_log_X^2
 }
 
-var_alr <- function(n, p1_name, p2_name, X, smooth = TRUE, epsilon = 1e-6) {
+# We need an age pattern to the covariance between
+# the ALR's numerator transition and denominator transition.
+# The cov term reduces to the minimum -1/n for single ages, 
+# but this does not convince me. Instead we calculate cov over
+# small moving windows of age ranges. But the result is super 
+# sensitive to window size. Larger window = larger negative cov,
+adaptive_window <- function(i, X, min_window = 3, max_window = 10) {
+  # Calculate local variability across rows
+  local_sd <- apply(X[max(1, i - max_window):min(nrow(X), i + max_window), ], 2, sd)
   
+  # Normalize local_sd to emphasize differences
+  normalized_sd <- (local_sd - mean(local_sd)) / sd(local_sd)
+  
+  # Scale window size
+  scaled_window <- max_window - (normalized_sd / max(normalized_sd)) * (max_window - min_window)
+  
+  # Ensure window size stays within bounds
+  return(round(pmax(min_window, pmin(scaled_window, max_window))))
+}
+
+var_alr <- function(n, 
+                    p1_name, 
+                    p2_name, 
+                    X, 
+                    smooth = TRUE, 
+                    epsilon = 1e-10) {
+  # Input validation
   N <- length(n)
-  stopifnot(all.equal(N, nrow(X)))
+  stopifnot(N == nrow(X))
   stopifnot(p1_name %in% colnames(X))
   stopifnot(p2_name %in% colnames(X))
   
-  # make sure no 0s
+  # Stabilize probabilities
   X <- X + epsilon
   
-  vx <- n * 0
+  # Compute dynamic covariances
+  # dynamic_cov <- dynamic_cov_multinom(p1_name = p1_name, 
+  #                                     p2_name = p2_name, 
+  #                                     X = X, 
+  #                                     window = cov_window, 
+  #                                     epsilon = epsilon)
+  
+  # Initialize variances vector
+  variances <- numeric(N)
+  
   
   for (i in seq_along(n)) {
+    window <- adaptive_window(i, X)
+    ind <- max(1, i - window):min(nrow(X), i + window)
+    # Compute dynamic covariance
+    cov_matrix    <- cov(X[ind, ])
+    cov_log_p1_p2 <- cov_matrix[p1_name, p2_name]
+    
+    # Compute variances for log(p1) and log(p2)
     var_log_p1 <- lbinom_var(n[i], X[i, p1_name])
     var_log_p2 <- lbinom_var(n[i], X[i, p2_name])
     
-    # Compute ALR variance                    
-    vx[i] <- var_log_p1 + var_log_p2 + 
-      2 / n[i] # this is cov term for multinom
+    # Compute ALR variance
+    variances[i] <- var_log_p1 + var_log_p2 - 2 * cov_log_p1_p2
   }
   
   # Smoothing option
   if (smooth) {
-    vx <- smooth.spline(vx, w = n)$y
+    variances <- smooth.spline(variances, w = n)$y
   }
   
-  return(vx)
+  return(variances)
 }
+
 fit_alr <- function(long_chunk){
   wide <- long_chunk |> 
     pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
@@ -118,15 +159,11 @@ probs |>
     probability = count_from_to / count_from, 
     from_to = paste0(substr(from,1,1) |> toupper(),
                           substr(to,1,1) |> toupper())) |> 
-  select(-count_from_to) |> 
+  select(-count_from_to, -to) |> 
   bind_rows(alr_pred) |> 
   ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
   geom_line() +
   scale_y_log10() +
   theme_minimal()
-
-
-
-
 
 
