@@ -150,7 +150,7 @@ fit_alr <- function(long_chunk){
 probs<-  read_csv("probs_2.csv", show_col_types = FALSE) |> 
   select(-1)
 
-alr_pred <-
+# alr_pred <-
 probs |> 
   mutate(
     count_from_to = if_else(is.na(count_from_to),3,count_from_to),
@@ -159,7 +159,7 @@ probs |>
   mutate(from_to = paste0(substr(from,1,1) |> toupper(),
                           substr(to,1,1) |> toupper())) |> 
   select(-to) |> 
-  group_by(educ, gender, year, from) |> 
+  group_by(educ, gender, year, from) |>
   group_modify(~fit_alr(long_chunk = .x)) 
 
 
