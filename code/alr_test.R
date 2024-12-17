@@ -89,6 +89,14 @@ var_alr <- function(n,
   return(variances)
 }
 
+# the idea is we do a simple smooth of ALR, using 
+# splines::ns(age, 2), but we want 1/variance to use as weights,
+# ergo the earlier machinery. We probably could get away with using
+# n (count_from) as weights, but I think 1/var is better. Alternatively
+# still we could use the sum of numerator counts (i.e. both numerators) from
+# both fractions used in the ALR, which will be less than n. I tried neither
+# of these, because deriving the variance of ALR was too fun. And I prefer
+# it anyway. These three options would all make usable regression weights.
 fit_alr <- function(long_chunk){
   wide <- long_chunk |> 
     pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
