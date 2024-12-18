@@ -145,20 +145,22 @@ fit_alr <- function(long_chunk){
   n <- wide$count_from
   
 
-  V <- matrix(0,nrow = nrow(A),ncol=ncol(A), dimnames=list(NULL, colnames(A)))
-  for (i in 1:length(attr_vars)){
-    V[,i] <- var_alr(n, 
-                     p1_name = attr_vars[i],
-                     p2_name = denom_var,
-                     X = X,
-                     smooth=TRUE)
-  }
-  V[V < 0] <- 10
-  V[is.na(V)] <- 10
+  # V <- matrix(0,nrow = nrow(A),ncol=ncol(A), dimnames=list(NULL, colnames(A)))
+  # for (i in 1:length(attr_vars)){
+  #   V[,i] <- var_alr(n, 
+  #                    p1_name = attr_vars[i],
+  #                    p2_name = denom_var,
+  #                    X = X,
+  #                    smooth=TRUE)
+  # }
+  # V[V < 0] <- 10
+  # V[is.na(V)] <- 10
 
   Y <- A * 0
   for (i in 1:ncol(A)){
-  Y[,i] <- lm(A[,i] ~ splines::ns(x, 2), weights = 1 / V[,i]) |> 
+  # Y[,i] <- lm(A[,i] ~ splines::ns(x, 2), weights = 1 / V[,i]) |> 
+  #   predict(data.frame(x = x))
+  Y[,i] <- lm(A[,i] ~ splines::ns(x, 1), weights = n) |> 
     predict(data.frame(x = x))
   }
   pred <-
@@ -197,8 +199,7 @@ probs<-  read_csv("output/probs_empirical.csv", show_col_types = FALSE) |>
 
 # for testing, we can assume probability is valid, but it needs further checking still 
 
-# alr_pred <-
-long_chunk <-
+alr_pred  <-
   probs |> 
   mutate(from_to = paste0(substr(from,1,1) |> toupper(),
                           substr(to,1,1) |> toupper())) |> 
@@ -226,17 +227,20 @@ long_chunk <-
 # 
 # 
 # # compare
-# probs |>  
-#   mutate(
-#     count_from_to = if_else(is.na(count_from_to),3,count_from_to),
-#     probability = count_from_to / count_from, 
-#     from_to = paste0(substr(from,1,1) |> toupper(),
-#                           substr(to,1,1) |> toupper())) |> 
-#   select(-count_from_to, -to) |> 
-#   bind_rows(alr_pred) |> 
-#   ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
-#   geom_line() +
-#   scale_y_log10() +
-#   theme_minimal()
+probs |>  
+  filter(type == "empirical") |> 
+   mutate(
+     count_from_to = if_else(is.na(count_from_to),3,count_from_to),
+     probability = count_from_to / count_from, 
+     from_to = paste0(substr(from,1,1) |> toupper(),
+                           substr(to,1,1) |> toupper())) |> 
+   select(-count_from_to, -to) |> 
+   bind_rows(alr_pred) |> 
+   filter(from_to == "PD") |> 
+   ggplot(aes(x = age, y = probability,  linetype = type, color = as.factor(year), by = interaction(as.factor(year), type))) +
+   geom_line() +
+   scale_y_log10() +
+   theme_minimal() +
+  facet_wrap(gender ~ educ)
 # 
 # 
