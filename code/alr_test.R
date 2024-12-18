@@ -2,11 +2,23 @@
 library(tidyverse)
 library(compositions)
 
-lbinom_var <- function(n, p) {
-  x <- 1:n  # Generate the range of possible successes (skip x = 0)
+lbinom_var <- function(n., p, min_var = 1e-4) {
+  n. <- as.integer(n.)
+  x <- 1:n.  # Generate the range of possible successes (skip x = 0)
   
   # Compute log-PMF for stability, then exponentiate
-  probs <- dbinom(x, size = n, prob = p, log = TRUE) |> exp()
+  if (zapsmall(p) %in% c(0,1) ) {
+    probs <- c(rep(0,n.-1), 1) 
+    } else {
+      probs <- dbinom(x, size = n., prob = p, log = TRUE) |> exp()
+  }
+
+  if (any(is.nan(probs))){
+    probs
+    # bla
+    1+1
+    #bla
+  }
   
   # Compute moments in a vectorized way
   log_x <- log(x)
@@ -14,7 +26,9 @@ lbinom_var <- function(n, p) {
   E_log_X2 <- sum((log_x^2) * probs)
   
   # Return variance
-  E_log_X2 - E_log_X^2
+  var_out <- E_log_X2 - E_log_X^2
+
+  var_out
 }
 
 # We need an age pattern to the covariance between
@@ -74,9 +88,19 @@ var_alr <- function(n,
     cov_log_p1_p2 <- cov_matrix[p1_name, p2_name]
     
     # Compute variances for log(p1) and log(p2)
-    var_log_p1 <- lbinom_var(n[i], X[i, p1_name])
-    var_log_p2 <- lbinom_var(n[i], X[i, p2_name])
-    
+    p1 <- X[i, p1_name]
+    p2 <- X[i, p2_name]
+    if (zapsmall(p1) %in% c(0,1)){
+      var_log_p1 <- 0
+    } else {
+      var_log_p1 <- lbinom_var(n. = n[i], p = p1)
+    }
+    if (zapsmall(p2) %in% c(0,1)){
+      var_log_p2 <- 0
+    } else {
+      var_log_p2 <- lbinom_var(n. = n[i], p = p2)
+    }
+
     # Compute ALR variance
     variances[i] <- var_log_p1 + var_log_p2 - 2 * cov_log_p1_p2
   }
@@ -98,8 +122,9 @@ var_alr <- function(n,
 # of these, because deriving the variance of ALR was too fun. And I prefer
 # it anyway. These three options would all make usable regression weights.
 fit_alr <- function(long_chunk){
+  # slice(long_chunk,1) |> unlist() |> paste() |> cat("\n")
   wide <- long_chunk |> 
-    pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-5) 
+    pivot_wider(names_from = from_to, values_from = probability, values_fill = 1e-4) 
   
   x    <- wide$age
   cn <- colnames(wide)
@@ -112,6 +137,7 @@ fit_alr <- function(long_chunk){
     wide |> 
     select(all_of(from_to)) |> 
     as.matrix()
+  
   A <- 
     X |> 
     alr() |> 
@@ -127,6 +153,8 @@ fit_alr <- function(long_chunk){
                      X = X,
                      smooth=TRUE)
   }
+  V[V < 0] <- 10
+  V[is.na(V)] <- 10
 
   Y <- A * 0
   for (i in 1:ncol(A)){
@@ -147,34 +175,68 @@ fit_alr <- function(long_chunk){
   return(pred)
 }
 #alr_smoothed_probabilities <-
-probs<-  read_csv("probs_2.csv", show_col_types = FALSE) |> 
-  select(-1)
+probs<-  read_csv("output/probs_empirical.csv", show_col_types = FALSE) |> 
+  select(-1,-2)
+
+# Noticing two problems
+#  probs |> 
+#    mutate(test = count_from_to / count_from) |> 
+#    select(probability, test) |> 
+#    head(100)
+#  
+#  probs |> 
+#    filter(type == "empirical") |> 
+#    group_by( year,gender, educ,    age, from) |> 
+#    summarize(count_from =count_from[1],
+#              count_from_check = sum(count_from_to, na.rm=TRUE))
+#  
+# # counts <= 5 get NAs
+#  
+#  probs |>
+#    filter(is.na(count_from_to))
+
+# for testing, we can assume probability is valid, but it needs further checking still 
 
 # alr_pred <-
-probs |> 
-  mutate(
-    count_from_to = if_else(is.na(count_from_to),3,count_from_to),
-    probability = count_from_to / count_from) |> 
-  select(-1,-from_to,-count_from_to) |> 
+long_chunk <-
+  probs |> 
   mutate(from_to = paste0(substr(from,1,1) |> toupper(),
                           substr(to,1,1) |> toupper())) |> 
-  select(-to) |> 
+  select(-count_from_to, -to) |> 
+  filter(type == "empirical") |> 
+  filter(from != "unpartnered") |> 
+  # filter(is.na(count_from)) |> 
+  mutate(probability2 = round(probability,2)) |> 
+  group_by(educ, gender, year, from, age) |> 
+  mutate(n = n(),
+         count_from = case_when(is.na(count_from) & probability == 1 ~ 1,
+                                is.na(count_from) & n == 2 & probability2 == .5 ~ 2,
+                                is.na(count_from) & n == 2 & probability2 %in% c(.33,.67) ~ 3,
+                                is.na(count_from) & n == 2 & probability2 %in% c(.25,.75) ~ 4,
+                                is.na(count_from) & n == 3 & probability2 == .33 ~ 3,
+                                is.na(count_from) & n == 3 & probability2 %in% c(.25,.5) ~ 4,
+                                is.na(count_from) & n == 3 & probability2 %in% c(.2,.4,.6) ~ 5,
+                                TRUE ~ count_from
+                                )) |> 
+  ungroup() |> 
+  arrange(educ, gender, year, from, age) |> 
+  select(-probability2, -n) |>
   group_by(educ, gender, year, from) |>
   group_modify(~fit_alr(long_chunk = .x)) 
-
-
-# compare
-probs |>  
-  mutate(
-    count_from_to = if_else(is.na(count_from_to),3,count_from_to),
-    probability = count_from_to / count_from, 
-    from_to = paste0(substr(from,1,1) |> toupper(),
-                          substr(to,1,1) |> toupper())) |> 
-  select(-count_from_to, -to) |> 
-  bind_rows(alr_pred) |> 
-  ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
-  geom_line() +
-  scale_y_log10() +
-  theme_minimal()
-
-
+# 
+# 
+# # compare
+# probs |>  
+#   mutate(
+#     count_from_to = if_else(is.na(count_from_to),3,count_from_to),
+#     probability = count_from_to / count_from, 
+#     from_to = paste0(substr(from,1,1) |> toupper(),
+#                           substr(to,1,1) |> toupper())) |> 
+#   select(-count_from_to, -to) |> 
+#   bind_rows(alr_pred) |> 
+#   ggplot(aes(x = age, y = probability, color = from_to, linetype = type)) +
+#   geom_line() +
+#   scale_y_log10() +
+#   theme_minimal()
+# 
+# 
