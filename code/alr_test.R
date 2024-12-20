@@ -314,7 +314,7 @@ fit_alr_gam_educ <- function(long_chunk,
     filter(count_from > 10) |> 
     mutate(transition = as.factor(transition))
   
-  mod <- gam(alr ~ age * transition + educ, 
+  mod <- gam(alr ~ age * transition * educ, 
             data = fit_this, weights = sqrt(count_from),
             select = TRUE,
             gamma = 1.5,
@@ -373,9 +373,18 @@ joined <-
          !is.na(count_from)) |> 
   bind_rows(gam_alr_linear) 
 
+# joined |> 
+#   ggplot(aes(x = age, y = probability, color = as.factor(year), linetype = type)) +
+#   geom_line() +
+#   facet_wrap(educ~gender) +
+#   scale_y_log10() +
+#   scale_linetype_manual(values = c(empirical = 2, gam_alr_linear = 1))
+
+
 joined |> 
+  filter(gender == "men") |> 
   ggplot(aes(x = age, y = probability, color = as.factor(year), linetype = type)) +
   geom_line() +
-  facet_wrap(educ~gender) +
+  facet_grid(vars(from_to),vars(educ), scales = "free_y") +
   scale_y_log10() +
   scale_linetype_manual(values = c(empirical = 2, gam_alr_linear = 1))
